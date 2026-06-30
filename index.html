@@ -18,6 +18,7 @@
     .btn-primary { background-color: var(--tg-theme-button-color, #0088cc); color: var(--tg-theme-button-text-color, #ffffff); }
     .btn-wa { background-color: #25D366; color: white; }
     .btn-tg { background-color: #26A5E4; color: white; }
+    .btn-signal { background-color: #3A76F0; color: white; }
     .input-field { width: 100%; padding: 14px; margin-top: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; text-align: center; background: var(--tg-theme-bg-color, #ffffff); color: var(--tg-theme-text-color, #333); outline: none; }
     .hidden { display: none !important; }
     .description-text { color: #666666; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
@@ -155,10 +156,10 @@
         } catch(e) { console.log("Ad script execution error: " + e.toString()); }
       }
       
-      // Smoothly transition directly to the final layout screens without an aggressive page refresh split
+// Smoothly transition directly to the final layout screens
       setTimeout(function() {
-        const outputTarget = isUserAlreadyVerified ? tPhone : uPhone;
-        renderFinalView(outputTarget);
+        // ALWAYS pass the target phone number to the results screen
+        renderFinalView(tPhone);
       }, 2000);
     }
     
@@ -174,14 +175,18 @@
       });
     }
 
-    function renderFinalView(tPhone) {
+function renderFinalView(tPhone) {
       document.getElementById("view-main-form").classList.add("hidden");
       document.getElementById("view-results").classList.remove("hidden");
       document.getElementById("flow-title").textContent = "Links Unlocked!";
       document.getElementById("flow-desc").textContent = "Your destination numbers have been successfully linkified and logged.";
       
+      // Ensure the number starts with exactly one '+' for Signal formatting
+      const cleanTPhone = tPhone.startsWith('+') ? tPhone : '+' + tPhone;
+      
       const waUrl = "https://wa.me/" + tPhone;
       const tgUrl = "https://t.me/" + tPhone;
+      const signalUrl = "https://signal.me/#p/" + cleanTPhone;
       
       document.getElementById("links-container").innerHTML =
         '<div class="btn-row">' +
@@ -191,6 +196,10 @@
         '<div class="btn-row">' +
           '<button class="btn btn-tg" onclick="tg.openLink(\'' + tgUrl + '\')">✈️ Open Telegram Chat</button>' +
           '<button class="btn-copy" title="Copy Link" onclick="copyToClipboard(\'' + tgUrl + '\', this)">🔗</button>' +
+        '</div>' +
+        '<div class="btn-row">' +
+          '<button class="btn btn-signal" onclick="tg.openLink(\'' + signalUrl + '\')">🔒 Open Signal Chat</button>' +
+          '<button class="btn-copy" title="Copy Link" onclick="copyToClipboard(\'' + signalUrl + '\', this)">🔗</button>' +
         '</div>' +
         '<button class="btn" style="background:#eee; color:#333; margin-top:20px;" onclick="window.location.reload()">🔄 Linkify Another Number</button>';
     }
