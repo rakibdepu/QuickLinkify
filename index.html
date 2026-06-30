@@ -156,7 +156,7 @@
         } catch(e) { console.log("Ad script execution error: " + e.toString()); }
       }
       
-// Smoothly transition directly to the final layout screens
+      // Smoothly transition directly to the final layout screens
       setTimeout(function() {
         // ALWAYS pass the target phone number to the results screen
         renderFinalView(tPhone);
@@ -175,7 +175,7 @@
       });
     }
 
-function renderFinalView(tPhone) {
+    function renderFinalView(tPhone) {
       document.getElementById("view-main-form").classList.add("hidden");
       document.getElementById("view-results").classList.remove("hidden");
       document.getElementById("flow-title").textContent = "Links Unlocked!";
