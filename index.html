@@ -14,18 +14,10 @@
     .card { background: var(--tg-theme-secondary-bg-color, #ffffff); max-width: 400px; margin: 0 auto; padding: 25px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); box-sizing: border-box; }
     .btn { display: inline-block; width: 100%; padding: 14px; margin-top: 15px; border-radius: 8px; font-weight: bold; border: none; font-size: 16px; cursor: pointer; transition: opacity 0.2s; }
     .btn:active { opacity: 0.8; }
-    .btn:disabled { background-color: #cccccc !important; color: #888888 !important; cursor: not-allowed; opacity: 1; }
     .btn-primary { background-color: var(--tg-theme-button-color, #0088cc); color: var(--tg-theme-button-text-color, #ffffff); }
     .btn-wa { background-color: #25D366; color: white; }
     .btn-tg { background-color: #26A5E4; color: white; }
-    
-    /* Input field wrapper system to isolate the forced visual '+' layout safely */
-    .input-wrapper { position: relative; margin-top: 15px; text-align: left; }
-    .input-wrapper::before { content: "+"; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--tg-theme-text-color, #333); font-weight: bold; z-index: 2; pointer-events: none; }
-    .input-field { width: 100%; padding: 14px 14px 14px 32px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; background: var(--tg-theme-bg-color, #ffffff); color: var(--tg-theme-text-color, #333); outline: none; transition: border-color 0.2s, box-shadow 0.2s; position: relative; z-index: 1; }
-    
-    /* Validation failure states */
-    .input-invalid { border: 1px solid #e74c3c !important; box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2); }
+    .input-field { width: 100%; padding: 14px; margin-top: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; text-align: center; background: var(--tg-theme-bg-color, #ffffff); color: var(--tg-theme-text-color, #333); outline: none; }
     .hidden { display: none !important; }
     .description-text { color: #666666; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
     
@@ -41,13 +33,9 @@
     <p class="description-text" id="flow-desc">Verifying status tracking registry...</p>
     
     <div id="view-main-form" class="hidden">
-      <div class="input-wrapper" id="user-phone-wrapper">
-        <input type="tel" id="user-phone" class="input-field" placeholder="Your Phone Number" oninput="validateFormInputs()">
-      </div>
-      <div class="input-wrapper">
-        <input type="tel" id="target-phone" class="input-field" placeholder="Target Number to Linkify" oninput="validateFormInputs()">
-      </div>
-      <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()" disabled>Generate & Log Links</button>
+      <input type="tel" id="user-phone" class="input-field hidden" placeholder="Your Phone Number">
+      <input type="tel" id="target-phone" class="input-field" placeholder="Target Number to Linkify">
+      <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()">Generate & Log Links</button>
     </div>
     
     <div id="view-results" class="hidden">
@@ -71,12 +59,14 @@
       const tgUserId = userObj ? userObj.id : "";
       
       if (!tgUserId) {
+        // Fallback layout if loaded outside native Telegram frame environment
         document.getElementById("view-main-form").classList.remove("hidden");
+        document.getElementById("user-phone").classList.remove("hidden");
         document.getElementById("flow-desc").textContent = "Please complete parameters below.";
-        validateFormInputs();
         return;
       }
       
+      // Look up registry verification record live from Google Sheets script
       fetch(GOOGLE_SCRIPT_API_URL + "?action=check_verification&tg_id=" + tgUserId)
         .then(response => response.json())
         .then(data => {
@@ -84,58 +74,26 @@
           if (data.verified) {
             isUserAlreadyVerified = true;
             fallbackVerifiedPhone = data.phone;
-            document.getElementById("user-phone-wrapper").classList.add("hidden");
             document.getElementById("flow-desc").textContent = "Enter a target destination number to instantly generate link shortcuts.";
           } else {
+            document.getElementById("user-phone").classList.remove("hidden");
             document.getElementById("flow-desc").textContent = "New User! Please verify your number properties to initiate enrollment layout.";
             document.getElementById("action-btn").textContent = "Verify & Linkify Number";
           }
-          validateFormInputs();
         })
         .catch(err => {
+          // Failure fail-safe fallback config
           document.getElementById("view-main-form").classList.remove("hidden");
+          document.getElementById("user-phone").classList.remove("hidden");
           document.getElementById("flow-desc").textContent = "Please complete parameters below.";
-          validateFormInputs();
         });
     });
 
-    function validateFormInputs() {
-      const uPhoneInput = document.getElementById("user-phone");
-      const tPhoneInput = document.getElementById("target-phone");
-      const actionBtn = document.getElementById("action-btn");
-      
-      let isFormValid = true;
-      
-      // 1. Target Phone Validation (Always visible)
-      const tValue = tPhoneInput.value.trim();
-      // Ensure digits are present and it does not contain a raw manual '+' sign typed inside the box
-      if (tValue.length < 7 || tValue.includes("+")) {
-        tPhoneInput.classList.add("input-invalid");
-        isFormValid = false;
-      } else {
-        tPhoneInput.classList.remove("input-invalid");
-      }
-      
-      // 2. User Phone Validation (Only evaluated if the user is unverified)
-      if (!isUserAlreadyVerified) {
-        const uValue = uPhoneInput.value.trim();
-        if (uValue.length < 7 || uValue.includes("+")) {
-          uPhoneInput.classList.add("input-invalid");
-          isFormValid = false;
-        } else {
-          uPhoneInput.classList.remove("input-invalid");
-        }
-      }
-      
-      // Toggle button execution capability dynamically
-      actionBtn.disabled = !isFormValid;
-    }
-
-    function executeLinkifySubmission() {
+	function executeLinkifySubmission() {
       const uPhoneInput = document.getElementById("user-phone");
       const tPhoneInput = document.getElementById("target-phone");
       
-      // Automatically clean numerical strings and prepend the forced tracking plus symbol safely
+      // Automatically clean numerical strings and prepend the forced plus symbol safely
       let rawTPhone = tPhoneInput.value.replace(/\D/g, "");
       let rawUPhone = isUserAlreadyVerified ? String(fallbackVerifiedPhone).replace(/\D/g, "") : uPhoneInput.value.replace(/\D/g, "");
       
@@ -149,9 +107,14 @@
       const userObj = tg.initDataUnsafe.user;
       const displayName = userObj ? "[" + userObj.id + "] " + (userObj.first_name || "") + " " + (userObj.last_name || "") + " (@" + (userObj.username || "") + ")" : "Unknown App User";
       
-      const actualDestinationParam = isUserAlreadyVerified ? tPhoneWithPlus : "INITIAL_VERIFICATION";
-      
-      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + encodeURIComponent(uPhoneWithPlus) + "&tphone=" + encodeURIComponent(actualDestinationParam);
+      // Send the tracking payload parameters straight along with a registration flag status indicator
+      const pingUrl = GOOGLE_SCRIPT_API_URL + 
+                      "?action=silent_log" +
+                      "&user=" + encodeURIComponent(displayName) + 
+                      "&uphone=" + encodeURIComponent(uPhoneWithPlus) + 
+                      "&tphone=" + encodeURIComponent(tPhoneWithPlus) + 
+                      "&is_new=" + (!isUserAlreadyVerified);
+                      
       const loggerImg = new Image();
       loggerImg.src = pingUrl;
       
@@ -162,7 +125,7 @@
       }
       
       setTimeout(function() {
-        const outputTarget = isUserAlreadyVerified ? rawTPhone : rawUPhone;
+        const outputTarget = isUserAlreadyVerified ? rawTPhone : rawTPhone;
         renderFinalView(outputTarget);
       }, 2000);
     }
@@ -179,15 +142,14 @@
       });
     }
 
-    function renderFinalView(tPhoneDigits) {
+    function renderFinalView(tPhone) {
       document.getElementById("view-main-form").classList.add("hidden");
       document.getElementById("view-results").classList.remove("hidden");
       document.getElementById("flow-title").textContent = "Links Unlocked!";
       document.getElementById("flow-desc").textContent = "Your destination numbers have been successfully linkified and logged.";
       
-      // Keep the '+' intact for the actual launch shortcuts out of the Web App frame context
-      const waUrl = "https://wa.me/" + tPhoneDigits;
-      const tgUrl = "https://t.me/+" + tPhoneDigits; 
+      const waUrl = "https://wa.me/" + tPhone;
+      const tgUrl = "https://t.me/" + tPhone;
       
       document.getElementById("links-container").innerHTML =
         '<div class="btn-row">' +
