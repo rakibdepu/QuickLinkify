@@ -14,6 +14,7 @@
     .card { background: var(--tg-theme-secondary-bg-color, #ffffff); max-width: 400px; margin: 0 auto; padding: 25px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); box-sizing: border-box; }
     .btn { display: inline-block; width: 100%; padding: 14px; margin-top: 15px; border-radius: 8px; font-weight: bold; border: none; font-size: 16px; cursor: pointer; transition: opacity 0.2s; }
     .btn:active { opacity: 0.8; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary { background-color: var(--tg-theme-button-color, #0088cc); color: var(--tg-theme-button-text-color, #ffffff); }
     .btn-wa { background-color: #25D366; color: white; }
     .btn-tg { background-color: #26A5E4; color: white; }
@@ -35,7 +36,7 @@
     <div id="view-main-form" class="hidden">
       <input type="tel" id="user-phone" class="input-field hidden" placeholder="Your Phone Number">
       <input type="tel" id="target-phone" class="input-field" placeholder="Target Number to Linkify">
-      <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()">Generate & Log Links</button>
+      <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()" disabled>Generate & Log Links</button>
     </div>
     
     <div id="view-results" class="hidden">
@@ -54,7 +55,33 @@
     // ⚠️ CONFIGURATION: Paste your Google Apps Script Web App Executable URL here!
     const GOOGLE_SCRIPT_API_URL = "https://script.google.com/macros/s/AKfycbwh8ZEuboFIt56bue7ShUEZBxmkBLMgoqBioZJ2tMtPIcfZYKhbUgUUQlGgdsCKvoVP2Q/exec";
     
+    function validatePlusPrefix() {
+      const uPhoneInput = document.getElementById("user-phone");
+      const tPhoneInput = document.getElementById("target-phone");
+      const actionBtn = document.getElementById("action-btn");
+
+      let isValid = true;
+      if (!uPhoneInput.classList.contains("hidden") && !uPhoneInput.value.startsWith("+")) isValid = false;
+      if (!tPhoneInput.classList.contains("hidden") && !tPhoneInput.value.startsWith("+")) isValid = false;
+
+      actionBtn.disabled = !isValid;
+    }
+
+    function setupPhoneInput(inputId) {
+      const el = document.getElementById(inputId);
+      el.addEventListener("focus", function() {
+        if (this.value === "") {
+          this.value = "+";
+          validatePlusPrefix();
+        }
+      });
+      el.addEventListener("input", validatePlusPrefix);
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
+      setupPhoneInput("user-phone");
+      setupPhoneInput("target-phone");
+
       const userObj = tg.initDataUnsafe.user;
       const tgUserId = userObj ? userObj.id : "";
       
@@ -63,6 +90,7 @@
         document.getElementById("view-main-form").classList.remove("hidden");
         document.getElementById("user-phone").classList.remove("hidden");
         document.getElementById("flow-desc").textContent = "Please complete parameters below.";
+        validatePlusPrefix();
         return;
       }
       
@@ -80,25 +108,31 @@
             document.getElementById("flow-desc").textContent = "New User! Please verify your number properties to initiate enrollment layout.";
             document.getElementById("action-btn").textContent = "Verify & Linkify Number";
           }
+          validatePlusPrefix();
         })
         .catch(err => {
           // Failure fail-safe fallback config
           document.getElementById("view-main-form").classList.remove("hidden");
           document.getElementById("user-phone").classList.remove("hidden");
           document.getElementById("flow-desc").textContent = "Please complete parameters below.";
+          validatePlusPrefix();
         });
     });
 
-	function executeLinkifySubmission() {
+    function executeLinkifySubmission() {
       const uPhoneInput = document.getElementById("user-phone");
-      const tPhoneInput = document.getElementById("target-phone");
+      // Use a regex that preserves digits AND the + sign
+      const tPhone = document.getElementById("target-phone").value.replace(/[^\d+]/g, "");
       
-      // Automatically clean numerical strings and prepend the forced plus symbol safely
-      let rawTPhone = tPhoneInput.value.replace(/\D/g, "");
-      let rawUPhone = isUserAlreadyVerified ? String(fallbackVerifiedPhone).replace(/\D/g, "") : uPhoneInput.value.replace(/\D/g, "");
+      let uPhone = uPhoneInput.value.replace(/[^\d+]/g, "");
+      if (isUserAlreadyVerified) {
+        uPhone = String(fallbackVerifiedPhone).replace(/[^\d+]/g, "");
+      }
       
-      const tPhoneWithPlus = "+" + rawTPhone;
-      const uPhoneWithPlus = "+" + rawUPhone;
+      if (uPhone.length < 7 || tPhone.length < 7) {
+        alert("Please provide valid phone profiles.");
+        return;
+      }
       
       const actionBtn = document.getElementById("action-btn");
       actionBtn.disabled = true;
@@ -107,14 +141,11 @@
       const userObj = tg.initDataUnsafe.user;
       const displayName = userObj ? "[" + userObj.id + "] " + (userObj.first_name || "") + " " + (userObj.last_name || "") + " (@" + (userObj.username || "") + ")" : "Unknown App User";
       
-      // Send the tracking payload parameters straight along with a registration flag status indicator
-      const pingUrl = GOOGLE_SCRIPT_API_URL + 
-                      "?action=silent_log" +
-                      "&user=" + encodeURIComponent(displayName) + 
-                      "&uphone=" + encodeURIComponent(uPhoneWithPlus) + 
-                      "&tphone=" + encodeURIComponent(tPhoneWithPlus) + 
-                      "&is_new=" + (!isUserAlreadyVerified);
-                      
+      // Log destination tracking execution or set up an initial verification key log
+      const actualDestinationParam = isUserAlreadyVerified ? tPhone : "INITIAL_VERIFICATION";
+      
+      // Note: We now send BOTH the logical destination and the real target number so the backend can save both rows
+      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + encodeURIComponent(uPhone) + "&tphone=" + encodeURIComponent(actualDestinationParam) + "&real_target=" + encodeURIComponent(tPhone);
       const loggerImg = new Image();
       loggerImg.src = pingUrl;
       
@@ -124,8 +155,9 @@
         } catch(e) { console.log("Ad script execution error: " + e.toString()); }
       }
       
+      // Smoothly transition directly to the final layout screens without an aggressive page refresh split
       setTimeout(function() {
-        const outputTarget = isUserAlreadyVerified ? rawTPhone : rawTPhone;
+        const outputTarget = isUserAlreadyVerified ? tPhone : uPhone;
         renderFinalView(outputTarget);
       }, 2000);
     }
