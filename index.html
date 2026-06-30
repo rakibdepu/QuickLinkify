@@ -32,14 +32,21 @@
 <body>
   <div class="card">
     <h3 id="flow-title">QuickLinkify</h3>
-    <p class="description-text" id="flow-desc">Verifying status tracking registry...</p>
+    <p class="description-text" id="flow-desc">Connecting to database...</p>
     
+    <!-- PAGE 1: SIGNUP / VERIFICATION -->
+    <div id="view-verify" class="hidden">
+      <input type="tel" id="user-phone" class="input-field" placeholder="Your Phone Number">
+      <button class="btn btn-primary" id="verify-btn" onclick="executeVerification()" disabled>Verify Account</button>
+    </div>
+
+    <!-- PAGE 2: MAIN APP (LINKIFY) -->
     <div id="view-main-form" class="hidden">
-      <input type="tel" id="user-phone" class="input-field hidden" placeholder="Your Phone Number">
       <input type="tel" id="target-phone" class="input-field" placeholder="Target Number to Linkify">
-      <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()" disabled>Generate & Log Links</button>
+      <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()" disabled>Generate Links</button>
     </div>
     
+    <!-- PAGE 3: RESULTS -->
     <div id="view-results" class="hidden">
       <div id="links-container"></div>
     </div>
@@ -50,88 +57,115 @@
     tg.expand();
     
     const sdkFunctionName = "show_11216586";
-    let isUserAlreadyVerified = false;
     let fallbackVerifiedPhone = "";
+    
+    // Extract referral code
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref') || 'organic';
     
     // ⚠️ CONFIGURATION: Paste your Google Apps Script Web App Executable URL here!
     const GOOGLE_SCRIPT_API_URL = "https://script.google.com/macros/s/AKfycbwh8ZEuboFIt56bue7ShUEZBxmkBLMgoqBioZJ2tMtPIcfZYKhbUgUUQlGgdsCKvoVP2Q/exec";
     
-    function validatePlusPrefix() {
+    // Format User Info
+    const userObj = tg.initDataUnsafe.user;
+    const tgUserId = userObj ? userObj.id : "";
+    const displayName = userObj ? "[" + userObj.id + "] " + (userObj.first_name || "") + " " + (userObj.last_name || "") + " (@" + (userObj.username || "") + ")" : "Unknown App User";
+
+    // --- Validation Logic ---
+    function validateVerifyInput() {
       const uPhoneInput = document.getElementById("user-phone");
-      const tPhoneInput = document.getElementById("target-phone");
-      const actionBtn = document.getElementById("action-btn");
-
-      let isValid = true;
-      if (!uPhoneInput.classList.contains("hidden") && !uPhoneInput.value.startsWith("+")) isValid = false;
-      if (!tPhoneInput.classList.contains("hidden") && !tPhoneInput.value.startsWith("+")) isValid = false;
-
-      actionBtn.disabled = !isValid;
+      document.getElementById("verify-btn").disabled = !uPhoneInput.value.startsWith("+");
     }
 
-    function setupPhoneInput(inputId) {
+    function validateTargetInput() {
+      const tPhoneInput = document.getElementById("target-phone");
+      document.getElementById("action-btn").disabled = !tPhoneInput.value.startsWith("+");
+    }
+
+    function setupPhoneInput(inputId, validationCallback) {
       const el = document.getElementById(inputId);
       el.addEventListener("focus", function() {
         if (this.value === "") {
           this.value = "+";
-          validatePlusPrefix();
+          validationCallback();
         }
       });
-      el.addEventListener("input", validatePlusPrefix);
+      el.addEventListener("input", validationCallback);
     }
 
+    // --- Initialization ---
     document.addEventListener("DOMContentLoaded", function() {
-      setupPhoneInput("user-phone");
-      setupPhoneInput("target-phone");
-
-      const userObj = tg.initDataUnsafe.user;
-      const tgUserId = userObj ? userObj.id : "";
+      setupPhoneInput("user-phone", validateVerifyInput);
+      setupPhoneInput("target-phone", validateTargetInput);
       
       if (!tgUserId) {
-        // Fallback layout if loaded outside native Telegram frame environment
-        document.getElementById("view-main-form").classList.remove("hidden");
-        document.getElementById("user-phone").classList.remove("hidden");
-        document.getElementById("flow-desc").textContent = "Please complete parameters below.";
-        validatePlusPrefix();
+        // Not in Telegram App fallback
+        document.getElementById("flow-desc").textContent = "New User Registration";
+        document.getElementById("view-verify").classList.remove("hidden");
         return;
       }
       
-      // Look up registry verification record live from Google Sheets script
+      // Check if user exists
       fetch(GOOGLE_SCRIPT_API_URL + "?action=check_verification&tg_id=" + tgUserId)
         .then(response => response.json())
         .then(data => {
-          document.getElementById("view-main-form").classList.remove("hidden");
           if (data.verified) {
-            isUserAlreadyVerified = true;
+            // Existing User -> Skip to Main App
             fallbackVerifiedPhone = data.phone;
             document.getElementById("flow-desc").textContent = "Enter a target destination number to instantly generate link shortcuts.";
+            document.getElementById("view-main-form").classList.remove("hidden");
           } else {
-            document.getElementById("user-phone").classList.remove("hidden");
-            document.getElementById("flow-desc").textContent = "New User! Please verify your number properties to initiate enrollment layout.";
-            document.getElementById("action-btn").textContent = "Verify & Linkify Number";
+            // New User -> Show Verify/Signup Page
+            document.getElementById("flow-desc").textContent = "Welcome! Please verify your phone number to register your account.";
+            document.getElementById("view-verify").classList.remove("hidden");
           }
-          validatePlusPrefix();
         })
         .catch(err => {
-          // Failure fail-safe fallback config
-          document.getElementById("view-main-form").classList.remove("hidden");
-          document.getElementById("user-phone").classList.remove("hidden");
-          document.getElementById("flow-desc").textContent = "Please complete parameters below.";
-          validatePlusPrefix();
+          // Error fallback -> Send to verify
+          document.getElementById("flow-desc").textContent = "Welcome! Please verify your phone number.";
+          document.getElementById("view-verify").classList.remove("hidden");
         });
     });
 
-    function executeLinkifySubmission() {
+    // --- Action: User Signup/Verification ---
+    function executeVerification() {
       const uPhoneInput = document.getElementById("user-phone");
-      // Use a regex that preserves digits AND the + sign
-      const tPhone = document.getElementById("target-phone").value.replace(/[^\d+]/g, "");
+      const uPhone = uPhoneInput.value.replace(/[^\d+]/g, "");
       
-      let uPhone = uPhoneInput.value.replace(/[^\d+]/g, "");
-      if (isUserAlreadyVerified) {
-        uPhone = String(fallbackVerifiedPhone).replace(/[^\d+]/g, "");
+      if (uPhone.length < 7) {
+        alert("Please provide a valid phone number.");
+        return;
       }
       
-      if (uPhone.length < 7 || tPhone.length < 7) {
-        alert("Please provide valid phone profiles.");
+      const verifyBtn = document.getElementById("verify-btn");
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = "Verifying...";
+      
+      // Save for the next step
+      fallbackVerifiedPhone = uPhone;
+      
+      // Ping database with INITIAL_VERIFICATION
+      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + encodeURIComponent(uPhone) + "&tphone=INITIAL_VERIFICATION&ref=" + encodeURIComponent(refParam);
+      const loggerImg = new Image();
+      loggerImg.src = pingUrl;
+      
+      // Transition to Main App Page
+      setTimeout(function() {
+        document.getElementById("view-verify").classList.add("hidden");
+        document.getElementById("view-main-form").classList.remove("hidden");
+        document.getElementById("flow-title").textContent = "Account Verified";
+        document.getElementById("flow-desc").textContent = "Enter a target destination number to instantly generate link shortcuts.";
+      }, 1500);
+    }
+
+    // --- Action: Generate Links ---
+    function executeLinkifySubmission() {
+      const tPhoneInput = document.getElementById("target-phone");
+      const tPhone = tPhoneInput.value.replace(/[^\d+]/g, "");
+      const uPhone = fallbackVerifiedPhone.replace(/[^\d+]/g, "");
+      
+      if (tPhone.length < 7) {
+        alert("Please provide a valid target number.");
         return;
       }
       
@@ -139,30 +173,23 @@
       actionBtn.disabled = true;
       actionBtn.textContent = "Launching Ad Stream...";
       
-      const userObj = tg.initDataUnsafe.user;
-      const displayName = userObj ? "[" + userObj.id + "] " + (userObj.first_name || "") + " " + (userObj.last_name || "") + " (@" + (userObj.username || "") + ")" : "Unknown App User";
-      
-      // Log destination tracking execution or set up an initial verification key log
-      const actualDestinationParam = isUserAlreadyVerified ? tPhone : "INITIAL_VERIFICATION";
-      
-      // Note: We now send BOTH the logical destination and the real target number so the backend can save both rows
-      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + encodeURIComponent(uPhone) + "&tphone=" + encodeURIComponent(actualDestinationParam) + "&real_target=" + encodeURIComponent(tPhone);
+      // Ping database with actual target number log
+      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + encodeURIComponent(uPhone) + "&tphone=" + encodeURIComponent(tPhone) + "&ref=" + encodeURIComponent(refParam);
       const loggerImg = new Image();
       loggerImg.src = pingUrl;
       
+      // Trigger Ad SDK
       if (typeof window[sdkFunctionName] === "function") {
-        try {
-          window[sdkFunctionName]();
-        } catch(e) { console.log("Ad script execution error: " + e.toString()); }
+        try { window[sdkFunctionName](); } catch(e) {}
       }
       
-      // Smoothly transition directly to the final layout screens
+      // Transition to Results Page
       setTimeout(function() {
-        // ALWAYS pass the target phone number to the results screen
         renderFinalView(tPhone);
       }, 2000);
     }
     
+    // --- UI Helpers ---
     function copyToClipboard(text, btnElement) {
       navigator.clipboard.writeText(text).then(function() {
         const originalContent = btnElement.innerHTML;
@@ -181,11 +208,10 @@
       document.getElementById("flow-title").textContent = "Links Unlocked!";
       document.getElementById("flow-desc").textContent = "Your destination numbers have been successfully linkified and logged.";
       
-      // Ensure the number starts with exactly one '+' for Signal formatting
       const cleanTPhone = tPhone.startsWith('+') ? tPhone : '+' + tPhone;
       
       const waUrl = "https://wa.me/" + tPhone;
-      const tgUrl = "https://t.me/" + tPhone;
+      const tgUrl = "https://t.me/" + cleanTPhone; // Added cleanTPhone to ensure + is present
       const signalUrl = "https://signal.me/#p/" + cleanTPhone;
       
       document.getElementById("links-container").innerHTML =
