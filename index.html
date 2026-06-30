@@ -5,34 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>QuickLinkify Engine</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  
-  <!-- NATIVE LIVE MONETAG SDK TAG -->
   <script src="https://libtl.com/sdk.js" data-zone="11216586" data-sdk="show_11216586"></script>
   
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; background-color: var(--tg-theme-bg-color, #f5f7fb); color: var(--tg-theme-text-color, #333333); padding: 25px 15px; margin: 0; }
     .card { background: var(--tg-theme-secondary-bg-color, #ffffff); max-width: 400px; margin: 0 auto; padding: 25px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); box-sizing: border-box; }
-    .btn { display: inline-block; width: 100%; padding: 14px; margin-top: 15px; border-radius: 8px; font-weight: bold; border: none; font-size: 16px; cursor: pointer; transition: opacity 0.2s; }
+    .btn { display: inline-block; padding: 14px; border-radius: 8px; font-weight: bold; border: none; font-size: 16px; cursor: pointer; transition: opacity 0.2s; box-sizing: border-box; }
     .btn:active { opacity: 0.8; }
-    .btn-primary { background-color: var(--tg-theme-button-color, #0088cc); color: var(--tg-theme-button-text-color, #ffffff); }
-    .btn-wa { background-color: #25D366; color: white; }
-    .btn-tg { background-color: #26A5E4; color: white; }
+    .btn-primary { width: 100%; background-color: var(--tg-theme-button-color, #0088cc); color: var(--tg-theme-button-text-color, #ffffff); margin-top: 15px; }
+    .link-row { display: flex; gap: 10px; margin-top: 15px; width: 100%; box-sizing: border-box; align-items: center; }
+    .btn-main { flex: 4; text-decoration: none; text-align: center; color: white; }
+    .btn-copy { flex: 1; background-color: #eee; color: #333; font-size: 13px; padding: 14px 5px; }
+    .btn-wa { background-color: #25D366; }
+    .btn-tg { background-color: #26A5E4; }
     .input-field { width: 100%; padding: 14px; margin-top: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; text-align: center; background: var(--tg-theme-bg-color, #ffffff); color: var(--tg-theme-text-color, #333); outline: none; }
-    .hidden { display: none; }
+    .hidden { display: none !important; }
     .description-text { color: #666666; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
+    .warning-box { background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 8px; font-size: 14px; margin-bottom: 15px; border: 1px solid #ffeeba; }
   </style>
 </head>
 <body>
   <div class="card">
     <h3 id="flow-title">QuickLinkify</h3>
-    <p class="description-text" id="flow-desc">Please complete the parameters below.</p>
+    <p class="description-text" id="flow-desc">Connecting to secure verification database...</p>
     
-    <div id="view-main-form">
-      <input type="tel" id="user-phone" class="input-field" placeholder="Your Phone Number">
+    <!-- 1. GATED NEW USER UNVERIFIED SCREEN -->
+    <div id="view-unverified" class="hidden">
+      <div class="warning-box">🛑 New User, Please verify your number.</div>
+      <p class="description-text">To prevent automated abuse, verification must be completed in the chat thread first.</p>
+      <button class="btn btn-primary" onclick="closeAndRequestContact()">Click to Verify in Chat</button>
+    </div>
+
+    <!-- 2. AUTHORIZED CONVERSION FORM SCREEN -->
+    <div id="view-main-form" class="hidden">
       <input type="tel" id="target-phone" class="input-field" placeholder="Target Number to Linkify">
       <button class="btn btn-primary" id="action-btn" onclick="executeLinkifySubmission()">Generate & Log Links</button>
     </div>
     
+    <!-- 3. OUTPUT RESULT SHORTCUT DISPLAY -->
     <div id="view-results" class="hidden">
       <div id="links-container"></div>
     </div>
@@ -44,15 +54,55 @@
     
     const sdkFunctionName = "show_11216586";
     
-    // ⚠️ CONFIGURATION: Paste your Google Apps Script Web App Executable URL here!
+    // ⚠️ CONFIGURATION: Put your current Google Apps Script Executable Link here!
     const GOOGLE_SCRIPT_API_URL = "https://script.google.com/macros/s/AKfycbwh8ZEuboFIt56bue7ShUEZBxmkBLMgoqBioZJ2tMtPIcfZYKhbUgUUQlGgdsCKvoVP2Q/exec";
     
+    let verifiedUserPhone = "";
+    const userObj = tg.initDataUnsafe.user;
+    const chatId = userObj ? userObj.id.toString() : "";
+    const displayName = userObj ? (userObj.first_name || "") + " " + (userObj.last_name || "") + " (@" + (userObj.username || "") + ")" : "Unknown App User";
+
+    window.onload = function() {
+      if (!chatId) {
+        document.getElementById("flow-desc").textContent = "Error: Please open inside Telegram.";
+        return;
+      }
+
+      // Check registration index rows server-side
+      fetch(GOOGLE_SCRIPT_API_URL + "?action=check_verification&chatId=" + chatId)
+        .then(response => response.json())
+        .then(data => {
+          if (data.verified) {
+            verifiedUserPhone = data.phone;
+            document.getElementById("flow-desc").textContent = "Enter the destination target number below.";
+            document.getElementById("view-main-form").classList.remove("hidden");
+          } else {
+            document.getElementById("flow-desc").textContent = "Verification Required.";
+            document.getElementById("view-unverified").classList.remove("hidden");
+          }
+        })
+        .catch(err => {
+          document.getElementById("flow-desc").textContent = "Connection timed out. Retrying...";
+        });
+    };
+
+    function closeAndRequestContact() {
+      // Closes the webapp frame cleanly so they see your backend verification request buttons
+      tg.close();
+    }
+    
+    function copyLinkToClipboard(textToCopy, buttonId) {
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        const targetBtn = document.getElementById(buttonId);
+        targetBtn.textContent = "📋✓";
+        setTimeout(() => { targetBtn.textContent = "Copy"; }, 1500);
+      });
+    }
+    
     function executeLinkifySubmission() {
-      const uPhone = document.getElementById("user-phone").value.replace(/\D/g, "");
       const tPhone = document.getElementById("target-phone").value.replace(/\D/g, "");
-      
-      if (uPhone.length < 7 || tPhone.length < 7) {
-        alert("Please provide valid phone profiles.");
+      if (tPhone.length < 7) {
+        alert("Please provide a valid destination phone layout.");
         return;
       }
       
@@ -60,41 +110,36 @@
       actionBtn.disabled = true;
       actionBtn.textContent = "Launching Ad Stream...";
       
-      const userObj = tg.initDataUnsafe.user;
-      const displayName = userObj ? (userObj.first_name || "") + " " + (userObj.last_name || "") + " (@" + (userObj.username || "") + ")" : "Unknown App User";
+      // Fire logging using the server-validated phone string extracted out of the database sheet
+      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + verifiedUserPhone + "&tphone=" + tPhone;
+      new Image().src = pingUrl;
       
-      // Send tracking row back to Google Sheets via standard network loop
-      const pingUrl = GOOGLE_SCRIPT_API_URL + "?action=silent_log&user=" + encodeURIComponent(displayName) + "&uphone=" + uPhone + "&tphone=" + tPhone;
-      const loggerImg = new Image();
-      loggerImg.src = pingUrl;
-      
-      // Run the Monetag SDK natively with no sandboxes in the way
       if (typeof window[sdkFunctionName] === "function") {
-        try {
-          window[sdkFunctionName]();
-        } catch(e) { console.log("Ad script execution error: " + e.toString()); }
+        try { window[sdkFunctionName](); } catch(e) {}
       }
       
-      // Transitions screens cleanly while the interstitial ad plays overhead
-      setTimeout(function() {
-        renderFinalView(tPhone);
-      }, 2000);
+      setTimeout(function() { renderFinalView(tPhone); }, 2000);
     }
     
     function renderFinalView(tPhone) {
       document.getElementById("view-main-form").classList.add("hidden");
       document.getElementById("view-results").classList.remove("hidden");
       document.getElementById("flow-title").textContent = "Links Unlocked!";
-      document.getElementById("flow-desc").textContent = "Your destination numbers have been successfully linkified and logged.";
+      document.getElementById("flow-desc").textContent = "Your shortcuts are logged and ready.";
       
-      // Clean formatting following the official protocol specifications
       const waUrl = "https://wa.me/" + tPhone;
-      const tgUrl = "https://t.me/" + tPhone; // Fixed: Removed the "+" symbol so it opens cleanly everywhere
+      const tgUrl = "https://t.me/" + tPhone;
       
       document.getElementById("links-container").innerHTML =
-        '<button class="btn btn-wa" onclick="tg.openLink(\'' + waUrl + '\')">💬 Open WhatsApp Chat</button>' +
-        '<button class="btn btn-tg" onclick="tg.openLink(\'' + tgUrl + '\')">✈️ Open Telegram Chat</button>' +
-        '<button class="btn" style="background:#eee; color:#333; margin-top:20px;" onclick="window.location.reload()">🔄 Linkify Another Number</button>';
+        '<div class="link-row">' +
+        '  <button class="btn btn-main btn-wa" onclick="tg.openLink(\'' + waUrl + '\')">💬 WhatsApp</button>' +
+        '  <button class="btn btn-copy" id="cp-wa" onclick="copyLinkToClipboard(\'' + waUrl + '\', \'cp-wa\')">Copy</button>' +
+        '</div>' +
+        '<div class="link-row">' +
+        '  <button class="btn btn-main btn-tg" onclick="tg.openLink(\'' + tgUrl + '\')">✈️ Telegram</button>' +
+        '  <button class="btn btn-copy" id="cp-tg" onclick="copyLinkToClipboard(\'' + tgUrl + '\', \'cp-tg\')">Copy</button>' +
+        '</div>' +
+        '<button class="btn" style="background:#eee; color:#333; margin-top:25px; width:100%;" onclick="window.location.reload()">🔄 Linkify Another</button>';
     }
   </script>
 </body>
