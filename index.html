@@ -123,13 +123,12 @@
         } catch(e) { console.log("Ad script execution error: " + e.toString()); }
       }
       
+      // Smoothly transition directly to the final layout screens without an aggressive page refresh split
       setTimeout(function() {
-        if (!isUserAlreadyVerified) {
-          // If this was their very first initialization tracking run, reload to lock them in as verified
-          window.location.reload();
-        } else {
-          renderFinalView(tPhone);
-        }
+        // If it was an initial verification, we still want to let them use the links they just typed!
+        // We'll pass the input number directly to the results screen so they don't lose progress.
+        const outputTarget = isUserAlreadyVerified ? tPhone : uPhone;
+        renderFinalView(outputTarget);
       }, 2000);
     }
     
